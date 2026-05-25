@@ -1,0 +1,34 @@
+{
+  "theme": "RestorativeSerenity",
+  "visualTokens": {
+    "colors": {
+      "sereneGreen": "#E2F0D9",
+      "groundingSlate": "#4A5568",
+      "softAmeliorate": "#FFF5F5"
+    },
+    "typography": {
+      "scale": "minimalist-scannable",
+      "fontFamily": "system-ui, sans-serif"
+    }
+  },
+  "focusStates": {
+    "activePaddockView": {
+      "visibleElements": ["PaddockCard", "DynamicAUDIndicator", "QualitativeBadge"],
+      "hiddenBackgroundNoise": ["CloudTelemetryLogs", "RawUUIDFields", "SystemBridges"]
+    }
+  },
+  "statusBadgeDefinitions": {
+    "EXCELLENT_HEALTH": {
+      "label": "Excellent",
+      "backgroundColor": "sereneGreen",
+      "textColor": "groundingSlate",
+      "icon": "✨"
+    },
+    "CLIMATE_WARNING": {
+      "label": "Frost Risk Warning",
+      "backgroundColor": "softAmeliorate",
+      "textColor": "groundingSlate",
+      "icon": "❄️"
+    }
+  }
+}
