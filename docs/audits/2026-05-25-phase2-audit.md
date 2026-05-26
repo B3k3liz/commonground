@@ -1,3 +1,42 @@
+# Phase 2 Audit — Remediation Status
+
+> **Original audit:** 2026-05-25 (preserved verbatim below)
+> **Remediation re-verified:** 2026-05-26 on branch `feature/tier-1-5-sweep`
+> **Re-verification method:** code re-read against the cited line numbers + `npm test` (62/62) + `node --test suite1.persistence-sync.test.mjs` (11/11) + `node --test suite2.concurrency-drift.test.mjs` (4/4) + `node scratch/test-orchestrator.js` (100% HEALTHY across all 5 pipelines).
+
+The 2026-05-25 audit identified 7 Critical/High findings and 12 Medium findings. As of 2026-05-26, the structural findings are remediated in code, with two High-severity items partially closed (depending on operator configuration) and three items intentionally out of the Phase 1 verification scope.
+
+## Status table (2026-05-26)
+
+| ID | Severity | Status | Evidence |
+|----|----------|--------|----------|
+| INF-1 | Critical | ✅ Resolved | `suite1.persistence-sync.test.mjs` parses and passes 11/11 |
+| INF-2 | Critical | ✅ Resolved | `package.json` exists with `"type": "module"`; both `.mjs` suites import the engine successfully |
+| P2P-1 | Critical | ✅ Resolved | `MAX_DRIFT_MS = 60000` clamp in `HybridLogicalClock.receive()` at `commonGroundSyncEngine.js:118-122` |
+| P2P-2 | High | ✅ Resolved | Single atomic `readwrite` tx spans `[table, 'mutation_outbox']` at `commonGroundSyncEngine.js:324` |
+| TEL-1 | High | ✅ Resolved | Missing/malformed signature returns 401; signature is mandatory at `telemetryIngestor.js:220-226` |
+| TEL-2 | High | ✅ Resolved | Idempotency cache populated only AFTER HMAC + timestamp pass — `telemetryIngestor.js:271` runs after `:251` |
+| INT-1 | High | ⚠️ Partial (config-dependent) | Resolver chain in place at `flushLocalQueueToCloud` (JWT `app_metadata` → `user_metadata` → `localStorage['cg_coop_id']`); zero-UUID fallback only fires if all three are unset. **Operator action required:** enable the Supabase JWT custom-access-token hook OR have `cloudLedger.js` populate `localStorage['cg_coop_id']` after `resolveCoop()`. |
+| P2P-3 | Medium | ✅ Resolved | `Number.isFinite()` validates both `remotePhysical` and `remoteCounter` at `commonGroundSyncEngine.js:111-113` |
+| P2P-4 | Medium | ✅ Resolved | Outbox rows and target-store row written in the same transaction (same fix as P2P-2) |
+| P2P-5 | Medium | ✅ Resolved | `knownStores` allowlist + `continue` on unknown `target_table` at `commonGroundSyncEngine.js:577-586` |
+| TEL-3 | Medium | ✅ Resolved | ±5 min freshness window check before HMAC at `telemetryIngestor.js:208-214` |
+| TEL-4 | Medium | ✅ Resolved | Persistence (step 5, `telemetryIngestor.js:276-286`) runs BEFORE the OPEN-only debounce (step 6, lines 288-300); telemetry is logged even when rotation is debounced |
+| TEL-5 | Medium | ✅ Resolved | `fetchActivePaddockByGate` matches by `gateId` first; only falls back to paddock `'a'` if no match (`commonGroundSyncEngine.js:432-435`) |
+| ECO-1 | Medium | ✅ Resolved | Triangular curve with descending limb to `tMax=95°F` in `calculateDynamicAUD` at `climateCalculators.js:39-52` |
+| ECO-2 | Medium | ✅ Resolved | Linear ramps for rainfall (`:56-57`) and humidity (`:59-60`) — no step cliffs |
+| ECO-3 | Medium | ✅ Resolved (renaming) | Comment at `climateCalculators.js:36` now names it "Continuous Thermal-Growth Coefficient" — GDD claim retracted honestly rather than misimplemented |
+| ECO-4 | Medium | ✅ Resolved | Q10=2 first-order temperature-dependent decay at `app.js:2613-2645` with biochemistry reference `T_ref = 68°F` (20°C); two-pool manure model (15% immediate + 85% queued) at `app.js:2321-2347` |
+| RLS-1 | Medium | ❓ Out of scope | Mutable ledger rows / no audit history — not part of Phase 1 re-audit. Original recommendation stands. |
+| RLS-2 | Medium | ❓ Out of scope | Multi-coop ambiguity (oldest-membership tiebreak) — not re-audited. Original recommendation stands. |
+| Low (various) | Low | ⚠️ Mixed | Timing-unsafe HMAC compare → ✅ resolved (`crypto.timingSafeEqual` at `telemetryIngestor.js:251`). HLC counter `padStart(4)` overflow, in-memory cache reset on restart, ÷0 capacity guard, hard-delete vs CRDT tombstone — not re-audited. |
+
+**Deep-dive questions (Q1, Q2, Q3 in §2 of the original audit):** unchanged — these are architectural conversations, not remediation targets. Worth keeping open with reviewers.
+
+---
+
+# Original audit (2026-05-25) — preserved verbatim
+
 # CommonGround — Phase 2 P2P Sync & Agro-Ecology Audit
 
 **Scope:** P2P sync engine, edge telemetry, agro-ecology models, multi-tenant schema/RLS

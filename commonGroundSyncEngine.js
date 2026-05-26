@@ -164,6 +164,25 @@ export class HybridLogicalClock {
 export class LocalFirstSyncEngine {
   constructor(localDbName = 'CommonGround_LocalDB', supabaseUrl = '', supabaseKey = '') {
     this.dbName = localDbName;
+
+    // Self-hosters can override the Supabase target without code edits by
+    // setting <meta name="cg-supabase-url"> / <meta name="cg-supabase-key">
+    // in index.html, or via window.cgConfig. Explicit constructor arguments
+    // (used by tests + the orchestrator) take highest precedence.
+    if (!supabaseUrl && typeof document !== 'undefined') {
+      const m = document.querySelector('meta[name="cg-supabase-url"]');
+      if (m && m.getAttribute('content')) supabaseUrl = m.getAttribute('content');
+      else if (typeof window !== 'undefined' && window.cgConfig && window.cgConfig.supabaseUrl) {
+        supabaseUrl = window.cgConfig.supabaseUrl;
+      }
+    }
+    if (!supabaseKey && typeof document !== 'undefined') {
+      const m = document.querySelector('meta[name="cg-supabase-key"]');
+      if (m && m.getAttribute('content')) supabaseKey = m.getAttribute('content');
+      else if (typeof window !== 'undefined' && window.cgConfig && window.cgConfig.supabaseKey) {
+        supabaseKey = window.cgConfig.supabaseKey;
+      }
+    }
     this.supabaseUrl = supabaseUrl;
     this.supabaseKey = supabaseKey;
     this.storagePersisted = null; // B-1A-3: Expose storagePersisted state explicitly

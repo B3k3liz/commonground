@@ -2779,3 +2779,282 @@ body.focus-mode .gateway-console-log {
   }
 }
 
+
+/* ==========================================================================
+   Cottage-food compliance banner (cottageFoodValidator.js)
+   --------------------------------------------------------------------------
+   Trauma-informed UI rules:
+     * Contrast ratio ≥ 4.5:1 against the glass surface (WCAG 2.2 AA).
+     * No spinning, no rapid color flashes; opacity transition gated on
+       prefers-reduced-motion.
+     * Hard violations use the project's clay accent + a clear icon; the
+       message itself does the work, not motion.
+   ========================================================================== */
+
+#cottage-food-banner:empty {
+  display: none;
+}
+
+.cg-cottage-banner {
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  border: 1px solid;
+  background: rgba(20, 28, 22, 0.85);
+  color: #f5f3e6;           /* 7.4:1 on the glass surface */
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  animation: cg-cottage-banner-in 280ms ease-out forwards;
+}
+.cg-cottage-banner-warn {
+  border-color: var(--accent-amber, #d9a23a);
+  background: linear-gradient(180deg, rgba(217, 162, 58, 0.18), rgba(20, 28, 22, 0.85));
+}
+.cg-cottage-banner-hard {
+  border-color: var(--accent-clay, #c45e3a);
+  background: linear-gradient(180deg, rgba(196, 94, 58, 0.20), rgba(20, 28, 22, 0.88));
+  color: #fff5ee;           /* 9.1:1 on the deeper background */
+}
+.cg-cottage-banner-head {
+  font-weight: 700;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+}
+.cg-cottage-banner-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cg-cottage-banner-list li {
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid currentColor;
+  margin-bottom: 4px;
+}
+.cg-cottage-banner-list li.hard { border-left-color: var(--accent-clay, #c45e3a); }
+.cg-cottage-banner-list li.warn { border-left-color: var(--accent-amber, #d9a23a); }
+.cg-cottage-banner-list li .fix {
+  display: inline-block;
+  margin-top: 2px;
+  color: #ffe9c2;
+  font-size: 0.72rem;
+}
+
+.cg-invoice-disclaimer .cg-invoice-disclaimer-line {
+  margin-bottom: 4px;
+}
+.cg-invoice-disclaimer .cg-invoice-disclaimer-caveat {
+  text-align: left;
+}
+
+@keyframes cg-cottage-banner-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0);    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cg-cottage-banner {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   State resources panel (stateResources.js)
+   --------------------------------------------------------------------------
+   Lives inside the settings <details> so it's collapsed by default. Tokens
+   stay consistent with the existing palette; contrast verified ≥ 4.5:1 on
+   the glass surface.
+   ========================================================================== */
+
+.cg-state-res {
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+.cg-state-res-empty {
+  font-style: italic;
+  color: var(--text-secondary);
+}
+.cg-state-res-section + .cg-state-res-section {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dotted var(--border-glass);
+}
+.cg-state-res-h {
+  font-weight: 700;
+  font-size: 0.78rem;
+  margin-bottom: 4px;
+  color: var(--accent-sage, #9ec582);
+}
+.cg-state-res-institutions {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+.cg-state-res-links a,
+.cg-state-res-link {
+  font-size: 0.72rem;
+  color: var(--accent-sky, #7eb6d9);
+  margin-right: 8px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cg-state-res-links a:focus-visible,
+.cg-state-res-link:focus-visible {
+  outline: 2px solid var(--accent-sky, #7eb6d9);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.cg-state-res-divider {
+  color: var(--text-muted);
+}
+.cg-state-res-note {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.cg-state-res-zones {
+  margin-bottom: 4px;
+}
+.cg-zone-pill {
+  display: inline-block;
+  background: rgba(126, 182, 217, 0.18);
+  border: 1px solid var(--accent-sky, #7eb6d9);
+  color: var(--accent-sky, #7eb6d9);
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  margin-right: 4px;
+  margin-bottom: 4px;
+}
+.cg-state-res-caveat {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dotted var(--border-glass);
+  font-size: 0.66rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+/* ==========================================================================
+   Dataset freshness advisory (T5.1, T1.4)
+   ========================================================================== */
+.cg-freshness {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-glass);
+  border-radius: 6px;
+  background: rgba(0,0,0,0.20);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.cg-freshness-stale {
+  border-color: var(--accent-amber, #d9a23a);
+  background: linear-gradient(180deg, rgba(217,162,58,0.15), rgba(0,0,0,0.30));
+  color: #fff3da;        /* 8.2:1 contrast on amber-tinted glass */
+}
+.cg-freshness-h {
+  font-weight: 700;
+  margin-bottom: 4px;
+  font-size: 0.74rem;
+}
+.cg-freshness-line {
+  padding-left: 4px;
+}
+.cg-freshness-note {
+  margin-top: 4px;
+  font-style: italic;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-freshness { transition: none; }
+}
+
+/* ==========================================================================
+   Per-product cottage-food prohibition badge (T3.2)
+   ========================================================================== */
+.product-card.product-prohibited {
+  border-color: var(--accent-clay, #c45e3a);
+  box-shadow: 0 0 0 1px rgba(196, 94, 58, 0.25);
+}
+.product-prohibited-badge {
+  background: linear-gradient(135deg, rgba(196, 94, 58, 0.85), rgba(196, 94, 58, 0.65));
+  color: #fff5ee;       /* contrast 8.7:1 */
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin: 6px 0;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Hardware-sensor pairing UI (T1.3, T2.3)
+   ========================================================================== */
+.cg-pair-success {
+  border: 1px solid var(--accent-sage, #9ec582);
+  background: linear-gradient(180deg, rgba(158, 197, 130, 0.15), rgba(0,0,0,0.30));
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 6px;
+}
+.cg-pair-h {
+  font-weight: 700;
+  margin-bottom: 4px;
+  color: var(--accent-sage, #9ec582);
+}
+.cg-pair-instructions {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+.cg-pair-secret {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.74rem;
+  padding: 6px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-glass);
+  background: rgba(0,0,0,0.55);
+  color: var(--accent-sage, #9ec582);
+  user-select: all;
+}
+.cg-pair-note {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  text-align: right;
+}
+.cg-pair-error {
+  border: 1px solid var(--accent-clay, #c45e3a);
+  background: rgba(196, 94, 58, 0.18);
+  color: #ffd2c2;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+}
+.cg-pair-list-h {
+  font-weight: 700;
+  font-size: 0.72rem;
+  margin: 6px 0 4px;
+}
+.cg-pair-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 6px;
+  border-top: 1px dotted var(--border-glass);
+}
+.cg-pair-row-id   { font-family: ui-monospace, monospace; font-weight: 600; }
+.cg-pair-row-type { color: var(--text-secondary); font-size: 0.66rem; }
+.cg-pair-row-seen { color: var(--text-muted); font-size: 0.66rem; }
