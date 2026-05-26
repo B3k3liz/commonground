@@ -156,6 +156,19 @@ export class TelemetryAgent {
         }
 
         if (this.legacyDevKey) {
+            // Production hardening: refuse the deprecated PSK trust path on a
+            // real gateway deploy. The browser-side gating
+            // (window.cgRunDiagnostics) is bypassable from DevTools; this
+            // Node-side check is not. Operators provisioning the Pi gateway
+            // must use createSupabaseSecretResolver, never legacyDevKey.
+            const nodeEnv = globalThis.process?.env?.NODE_ENV;
+            if (nodeEnv === 'production') {
+                throw new Error(
+                    '[TelemetryAgent] legacyDevKey is forbidden when ' +
+                    'NODE_ENV=production. Provision a real secretResolver ' +
+                    '(createSupabaseSecretResolver) instead.'
+                );
+            }
             // eslint-disable-next-line no-console
             console.warn(
                 '[TelemetryAgent] legacyDevKey mode is ENABLED. This trusts ' +
