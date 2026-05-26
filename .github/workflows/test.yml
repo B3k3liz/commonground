@@ -1,0 +1,56 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The repo has no production deps for the static app shell, only a
+      # devDeps placeholder. Use `npm install` so the workflow works with or
+      # without a lockfile checked in.
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Optional: surface ESLint findings
+        run: npx --yes eslint . || true
+        # Lint as informational only — does not fail the build until we've
+        # had a chance to drive the warning count to zero.
+
+  validate-supabase-migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ hashFiles('supabase/migrations/**/*.sql') != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Supabase migrations are well-formed SQL
+        run: |
+          # Cheap: ensure every file ends with a newline and contains no NUL
+          # bytes. Real validation happens when Supabase applies them.
+          for f in supabase/migrations/*.sql; do
+            if [ -s "$f" ] && [ "$(tail -c 1 "$f" | wc -l)" -eq 0 ]; then
+              echo "::warning file=$f::no trailing newline"
+            fi
+            if grep -lP '\x00' "$f"; then
+              echo "::error file=$f::contains NUL byte"
+              exit 1
+            fi
+          done
+          echo "OK — $(ls supabase/migrations/*.sql | wc -l) migrations look well-formed"

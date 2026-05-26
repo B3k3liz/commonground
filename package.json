@@ -1,6 +1,28 @@
 {
-  "name": "commonground",
-  "version": "0.2.0",
+  "name": "commonground-homestead-os",
+  "version": "0.1.0",
   "private": true,
-  "type": "module"
+  "description": "CommonGround Eco-Village & Homestead OS — local-first cooperative operations.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/test-p2p-concurrency.js tests/test-telemetry-ingestor.js tests/test-cottage-food-validator.js tests/test-state-resources.js",
+    "test:p2p":       "node --test tests/test-p2p-concurrency.js",
+    "test:ingestor":  "node --test tests/test-telemetry-ingestor.js",
+    "test:cottage":   "node --test tests/test-cottage-food-validator.js",
+    "test:resources": "node --test tests/test-state-resources.js",
+    "sw:bump":        "node scripts/bump-sw-cache.mjs",
+    "sw:check":       "node scripts/bump-sw-cache.mjs --check",
+    "lint":           "eslint .",
+    "prebuild":       "npm run sw:bump",
+    "serve":          "node scripts/static-server.mjs",
+    "test:e2e":       "playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "devDependencies": {
+    "eslint": "^9.13.0",
+    "@playwright/test": "^1.48.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
 }

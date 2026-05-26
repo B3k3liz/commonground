@@ -217,7 +217,10 @@ class CommonGroundApp {
 
     // USDA Hardiness Zone & Cottage Food legal disclaimers
     this.usdaZone = parseInt(localStorage.getItem("cg_usda_zone")) || 7;
-    this.cottageFoodStatement = localStorage.getItem("cg_cottage_food") || "Produced in a home kitchen not subject to public health inspection.";
+    // Free-text field, NOW supplementary — the state-required disclaimer is
+    // generated automatically by cottageFoodValidator.js from regionStateCode.
+    this.cottageFoodStatement = localStorage.getItem("cg_cottage_food") || "";
+    this.regionStateCode = (localStorage.getItem("cg_state_code") || "").toUpperCase();
     this.loraPacketsCount = parseInt(localStorage.getItem("cg_lora_packets")) || 14242;
     this.compostQueue = JSON.parse(localStorage.getItem("cg_compost_queue")) || [];
 
@@ -263,6 +266,7 @@ class CommonGroundApp {
     localStorage.setItem("cg_addon_iot", this.addonIot.toString());
     localStorage.setItem("cg_usda_zone", this.usdaZone.toString());
     localStorage.setItem("cg_cottage_food", this.cottageFoodStatement);
+    localStorage.setItem("cg_state_code", this.regionStateCode);
     localStorage.setItem("cg_lora_packets", this.loraPacketsCount.toString());
   }
 
@@ -399,6 +403,13 @@ class CommonGroundApp {
     // NEW DOM ELEMENTS FOR SAAS READY MODULES (USDA, Settings, LoRa Gateway)
     this.settingsUsdaZone = document.getElementById("settings-usda-zone");
     this.settingsCottageFood = document.getElementById("settings-cottage-food");
+    this.settingsRegionState = document.getElementById("settings-region-state");
+    this.cottageFoodBanner   = document.getElementById("cottage-food-banner");
+    this.stateResourcesPanel = document.getElementById("settings-state-resources");
+    this.sensorPairForm      = document.getElementById("form-pair-sensor");
+    this.sensorPairResult    = document.getElementById("pair-sensor-result");
+    this.sensorPairList      = document.getElementById("pair-sensor-list");
+    this.sensorPairWrapper   = document.getElementById("settings-pair-sensor-wrapper");
     this.loraRssi = document.getElementById("lora-rssi");
     this.loraPackets = document.getElementById("lora-packets");
     this.loraGatewayConsole = document.getElementById("lora-gateway-console");
@@ -512,6 +523,27 @@ class CommonGroundApp {
     // NEW EVENT LISTENERS FOR SAAS READY MODULES
     this.settingsUsdaZone.addEventListener("change", () => this.handleUsdaZoneChange());
     this.settingsCottageFood.addEventListener("input", () => this.handleCottageFoodChange());
+    if (this.settingsRegionState) {
+      this.settingsRegionState.addEventListener("input", () => this.handleRegionStateChange());
+    }
+    // Re-evaluate compliance whenever the validator finishes loading its rules.
+    window.addEventListener("cg-cottage-food-ready", () => this.renderCart());
+    // Refresh the local-resources panel when the state-resources data loads.
+    window.addEventListener("cg-state-resources-ready", () => this.renderStateResourcesPanel());
+
+    // T1.3: sensor-pairing form + rotate.
+    if (this.sensorPairForm) {
+      this.sensorPairForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        this.handlePairSensor();
+      });
+      // When the operator expands the panel, list existing sensors.
+      if (this.sensorPairWrapper) {
+        this.sensorPairWrapper.addEventListener("toggle", () => {
+          if (this.sensorPairWrapper.open) this.renderSensorList();
+        });
+      }
+    }
     this.btnPingLoraNodes.addEventListener("click", () => this.pingLoraNodes());
 
     // NEW ULTIMATE AGTECH EXPANSION LISTENERS
@@ -624,6 +656,190 @@ class CommonGroundApp {
     // 3. SaaS Setup state sync
     this.settingsUsdaZone.value = this.usdaZone;
     this.settingsCottageFood.value = this.cottageFoodStatement;
+    if (this.settingsRegionState) this.settingsRegionState.value = this.regionStateCode;
+    this.renderStateResourcesPanel();
+  }
+
+  // ----- Cottage-food compliance helpers -----------------------------------
+  // The validator publishes a global once its JSON loads; until then these
+  // helpers no-op. App-level callers must never assume the validator is ready.
+
+  _cottageFoodInput() {
+    // Annual storefront revenue: sum of income transactions categorised under
+    // 'Storefront' (matches what cloudLedger.js maps to source='storefront').
+    const year = new Date().getFullYear();
+    const annualRevenueUSD = this.transactions
+      .filter(t => t.type === 'income'
+        && /storefront|cottage/i.test(t.category || '')
+        && new Date(t.date).getFullYear() === year)
+      .reduce((s, t) => s + Math.abs(Number(t.amount) || 0), 0);
+
+    // Pending cart contents → category-count map.
+    const cartProducts = Object.keys(this.cart).map(id =>
+      this.storeProducts.find(p => p.id === id)).filter(Boolean);
+    const productCategoryCounts = window.cgCottageFood && window.cgCottageFood.ready
+      ? window.cgCottageFood.summariseProductCategories(cartProducts)
+      : {};
+
+    return {
+      stateCode: this.regionStateCode || null,
+      annualRevenueUSD,
+      productCategoryCounts,
+      poultryAnnualBirds: 0,    // wire in livestock module when available
+      rawMilkGallonsAnnual: 0
+    };
+  }
+
+  renderCottageFoodBanner() {
+    if (!this.cottageFoodBanner) return;
+    if (!window.cgCottageFood || !window.cgCottageFood.ready) {
+      this.cottageFoodBanner.innerHTML = '';
+      return;
+    }
+    this.cottageFoodBanner.innerHTML =
+      window.cgCottageFood.getStorefrontBannerHTML(this._cottageFoodInput());
+  }
+
+  handleRegionStateChange() {
+    this.regionStateCode = (this.settingsRegionState.value || "").trim().toUpperCase();
+    this.saveToStorage();
+    this.renderCottageFoodBanner();
+    this.renderStateResourcesPanel();
+    this.addActivity(
+      this.regionStateCode
+        ? `Storefront state set to ${this.regionStateCode} (cottage-food rules will apply)`
+        : `Storefront state cleared — falling back to conservative defaults`,
+      "system", "⚖️");
+
+    // T3.4: persist to the cooperative row in Supabase if signed in. Fire-
+    // and-forget — failure here doesn't block the local save.
+    if (window.cloudLedger && typeof window.cloudLedger.updateRegionState === 'function') {
+      window.cloudLedger.updateRegionState(this.regionStateCode).catch(err => {
+        console.warn('[app] region_state cloud sync failed:', err.message || err);
+      });
+    }
+  }
+
+  renderStateResourcesPanel() {
+    if (!this.stateResourcesPanel) return;
+    if (!window.cgStateResources || !window.cgStateResources.ready) {
+      this.stateResourcesPanel.innerHTML = '<em style="font-size:0.7rem;color:var(--text-muted);">Loading state resources…</em>';
+      return;
+    }
+
+    let html = window.cgStateResources.getResourcePanelHTML(this.regionStateCode);
+
+    // T5.1 + T1.4: Append a data-freshness block that pulls both datasets'
+    // last-verified dates. Loud advisory when EITHER dataset is stale OR
+    // the state is low-confidence — the operator needs to know we don't
+    // fully trust our own rule cache for their location.
+    if (this.regionStateCode) {
+      const cf  = window.cgCottageFood   && window.cgCottageFood.getFreshness   && window.cgCottageFood.getFreshness(this.regionStateCode);
+      const ext = window.cgStateResources && window.cgStateResources.getFreshness && window.cgStateResources.getFreshness(this.regionStateCode);
+      if (cf || ext) {
+        const stale = (cf && cf.isStale) || (ext && ext.isStale);
+        const cls = stale ? 'cg-freshness cg-freshness-stale' : 'cg-freshness';
+        html += `
+<div class="${cls}" role="${stale ? 'alert' : 'status'}">
+  <div class="cg-freshness-h">${stale ? '⚠️ Data verification needed' : '🗓️ Data freshness'}</div>
+  ${cf  ? `<div class="cg-freshness-line">${this._escapeText(cf.label)}</div>` : ''}
+  ${ext ? `<div class="cg-freshness-line">${this._escapeText(ext.label)}</div>` : ''}
+  ${stale ? `<div class="cg-freshness-note">
+    For ${this._escapeText(this.regionStateCode)}, treat compliance outputs as hints.
+    Verify cottage-food rules with your State Department of Agriculture before
+    listing new products.
+  </div>` : ''}
+</div>`;
+      }
+    }
+
+    this.stateResourcesPanel.innerHTML = html;
+  }
+
+  _escapeText(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  // T1.3 / T2.3: pair a new ESP32 sensor + manage existing ones --------------
+  async handlePairSensor() {
+    if (!this.sensorPairResult) return;
+    if (!window.cloudLedger || typeof window.cloudLedger.provisionHardwareNode !== 'function') {
+      this.sensorPairResult.innerHTML = '<div class="cg-pair-error">Sign in (cloud sync) first — pairing needs a coop admin session.</div>';
+      return;
+    }
+    const nodeId      = document.getElementById('pair-node-id').value.trim();
+    const nodeType    = document.getElementById('pair-node-type').value;
+    const displayName = document.getElementById('pair-display-name').value.trim() || null;
+
+    if (!/^Node-[A-Za-z0-9-]{1,32}$/.test(nodeId)) {
+      this.sensorPairResult.innerHTML = '<div class="cg-pair-error">Node ID must look like Node-G02.</div>';
+      return;
+    }
+
+    this.sensorPairResult.innerHTML = '<em>Provisioning…</em>';
+    try {
+      const hexSecret = await window.cloudLedger.provisionHardwareNode({
+        nodeId, nodeType, displayName
+      });
+      this.sensorPairResult.innerHTML = this._renderPairResult(nodeId, hexSecret, 'New sensor');
+      this.sensorPairForm.reset();
+      this.renderSensorList();
+      this.addActivity(`Paired sensor ${nodeId} (${nodeType})`, 'system', '🔧');
+    } catch (err) {
+      this.sensorPairResult.innerHTML =
+        `<div class="cg-pair-error">Pairing failed: ${this._escapeText(err.message || String(err))}</div>`;
+    }
+  }
+
+  async rotateSensorSecret(nodeId) {
+    if (!confirm(`Rotate the HMAC secret for ${nodeId}? The device will stop accepting telemetry until you re-pair its serial shell.`)) return;
+    try {
+      const hex = await window.cloudLedger.rotateHardwareNodeSecret(nodeId);
+      this.sensorPairResult.innerHTML = this._renderPairResult(nodeId, hex, 'Rotated secret');
+      this.addActivity(`Rotated HMAC secret for sensor ${nodeId}`, 'system', '🔁');
+    } catch (err) {
+      this.sensorPairResult.innerHTML =
+        `<div class="cg-pair-error">Rotate failed: ${this._escapeText(err.message || String(err))}</div>`;
+    }
+  }
+
+  _renderPairResult(nodeId, hexSecret, headline) {
+    return `
+<div class="cg-pair-success" role="alert">
+  <div class="cg-pair-h">✅ ${this._escapeText(headline)} — ${this._escapeText(nodeId)}</div>
+  <div class="cg-pair-instructions">
+    Paste this into the ESP32's USB-serial shell now. This is the only time
+    the secret is readable.
+  </div>
+  <input type="text" readonly value="set-secret ${this._escapeText(hexSecret)}" onclick="this.select()" class="cg-pair-secret" aria-label="Secret command for serial shell">
+  <div class="cg-pair-note">Then run <code>commit</code> on the device shell.</div>
+</div>`;
+  }
+
+  async renderSensorList() {
+    if (!this.sensorPairList) return;
+    if (!window.cloudLedger || typeof window.cloudLedger.listHardwareNodes !== 'function') {
+      this.sensorPairList.innerHTML = '<em>Sign in to list paired sensors.</em>';
+      return;
+    }
+    try {
+      const nodes = await window.cloudLedger.listHardwareNodes();
+      if (!nodes.length) {
+        this.sensorPairList.innerHTML = '<em>No sensors paired yet.</em>';
+        return;
+      }
+      this.sensorPairList.innerHTML = '<div class="cg-pair-list-h">Paired sensors</div>' +
+        nodes.map(n => `
+          <div class="cg-pair-row">
+            <span class="cg-pair-row-id">${this._escapeText(n.id)}</span>
+            <span class="cg-pair-row-type">${this._escapeText(n.node_type)}</span>
+            <span class="cg-pair-row-seen">${n.last_seen_at ? 'seen ' + new Date(n.last_seen_at).toLocaleDateString() : 'never seen'}</span>
+            <button class="btn-secondary btn-sm" onclick="app.rotateSensorSecret('${this._escapeText(n.id)}')" style="font-size: 0.65rem; padding: 2px 6px;">Rotate</button>
+          </div>`).join('');
+    } catch (err) {
+      this.sensorPairList.innerHTML = `<em>Could not list sensors: ${this._escapeText(err.message || err)}</em>`;
+    }
   }
 
   // --- ACCESSIBILITY TOGGLE CORE ---
@@ -772,6 +988,11 @@ class CommonGroundApp {
     if (modal.id === "modal-voice") {
       this.isListening = false;
       this.voiceMicPulse.classList.remove("active");
+      // Tear down whichever recognizer is active.
+      if (this._offlineVoice) {
+        try { this._offlineVoice.stop(); } catch(err) {}
+        this._offlineVoice = null;
+      }
       if (this.speechRecognizer) {
         try { this.speechRecognizer.stop(); } catch(err) {}
       }
@@ -862,18 +1083,131 @@ class CommonGroundApp {
     }
   }
 
+  // T5.2: focusFramework.json bootstrap --------------------------------------
+  // Fetches the focus-state design tokens and applies them as CSS custom
+  // properties. Surfaces statusBadgeDefinitions for any view that wants to
+  // render quiet semantic badges (e.g. paddock cards, livestock cards).
+  async loadFocusFramework() {
+    try {
+      const r = await fetch('./focusFramework.json', { cache: 'force-cache' });
+      if (!r.ok) return;
+      const framework = await r.json();
+      const root = document.documentElement;
+
+      // Visual tokens → CSS custom properties prefixed with --cg-token-*
+      const colors = (framework.visualTokens && framework.visualTokens.colors) || {};
+      for (const [name, hex] of Object.entries(colors)) {
+        root.style.setProperty(`--cg-token-${name.replace(/[^a-z0-9-]/gi, '-')}`, hex);
+      }
+
+      // Theme attribute so CSS can scope rules like [data-cg-theme="RestorativeSerenity"]
+      if (framework.theme) root.setAttribute('data-cg-theme', framework.theme);
+
+      window.cgFocus = {
+        ready:     true,
+        theme:     framework.theme || null,
+        tokens:    framework.visualTokens || {},
+        focusStates: framework.focusStates || {},
+        badges:    framework.statusBadgeDefinitions || {},
+        renderBadge(key) {
+          const def = (framework.statusBadgeDefinitions || {})[key];
+          if (!def) return '';
+          const bg = colors[def.backgroundColor] || def.backgroundColor;
+          const fg = colors[def.textColor]       || def.textColor;
+          return `<span class="cg-focus-badge" style="background:${bg};color:${fg};padding:2px 8px;border-radius:999px;font-size:0.7rem;font-weight:600;">${def.icon || ''} ${def.label || key}</span>`;
+        }
+      };
+
+      window.dispatchEvent(new CustomEvent('cg-focus-ready'));
+    } catch (err) {
+      console.warn('[app] focusFramework failed to load:', err.message || err);
+      window.cgFocus = { ready: false, badges: {}, renderBadge: () => '' };
+    }
+  }
+
+  // T1.2: Offline voice asset download flow ----------------------------------
+  // Lazy-fetches the ~40 MB Vosk model + library via the service worker's
+  // precache-voice message channel. Avoids blocking the SW install on a slow
+  // first connection.
+  async setupVoiceDownloadButton() {
+    const btn    = document.getElementById('btn-voice-download-offline');
+    const status = document.getElementById('voice-download-status');
+    if (!btn || !status) return;
+
+    const refresh = async () => {
+      if (!window.cgVoice) { btn.style.display = 'none'; return; }
+      const ok = await window.cgVoice.isOfflineVoiceAvailable();
+      if (ok) {
+        btn.style.display = 'none';
+        status.textContent = '✓ Offline voice ready (no cloud).';
+        status.style.color = 'var(--accent-sage, #9ec582)';
+      } else {
+        btn.style.display = '';
+        status.textContent = 'Offline voice not provisioned. Cloud fallback is OFF unless explicitly enabled.';
+        status.style.color = 'var(--text-muted)';
+      }
+    };
+    await refresh();
+
+    btn.onclick = async () => {
+      const cfg = (window.cgVoice && window.cgVoice.config) || {
+        libUrl:     './vendor/vosk-browser/vosk.js',
+        modelUrl:   './models/vosk-model-small-en-us-0.15.tar.gz',
+        workletUrl: './vosk-resampler-worklet.js'
+      };
+      const urls = [cfg.libUrl, cfg.modelUrl, cfg.workletUrl];
+
+      if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller) {
+        status.textContent = 'Service worker not active — refresh the page and try again.';
+        status.style.color = 'var(--accent-clay)';
+        return;
+      }
+
+      btn.disabled = true;
+      const originalLabel = btn.textContent;
+      btn.textContent = '⏳ Downloading…';
+      status.textContent = 'Downloading offline voice assets (~40 MB). Stay on Wi-Fi.';
+      status.style.color = 'var(--accent-amber)';
+
+      navigator.serviceWorker.controller.postMessage({ type: 'precache-voice', urls });
+
+      // The SW's cache.addAll is fire-and-forget; poll availability for up
+      // to 5 minutes (the model is ~40 MB on most US broadband ≈30s, slow
+      // mobile up to a few minutes).
+      const start = Date.now();
+      const interval = setInterval(async () => {
+        const ok = await window.cgVoice.isOfflineVoiceAvailable();
+        if (ok) {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+          await refresh();
+        } else if (Date.now() - start > 5 * 60 * 1000) {
+          clearInterval(interval);
+          btn.disabled = false;
+          btn.textContent = originalLabel;
+          status.textContent = 'Download taking longer than 5 min — check connection or vendor URL.';
+          status.style.color = 'var(--accent-clay)';
+        }
+      }, 3000);
+    };
+  }
+
   // 3. Natural Language Web Speech logs modal
   openVoiceModal(liveId) {
     this.activeVoiceLiveId = liveId;
     const live = this.livestock.find(l => l.id === liveId);
     if (!live) return;
-    
+
     this.voiceTranscribedText.textContent = "(Waiting for voice command...)";
-    this.voiceTranscriptionStatus.textContent = "READY FOR WEB SPEECH API";
+    this.voiceTranscriptionStatus.textContent = "READY";
     this.voiceTranscriptionStatus.style.color = "var(--accent-sky)";
-    
+
     this.showModal(this.modalVoice);
-    
+
+    // T1.2: surface the offline-voice download button if needed.
+    this.setupVoiceDownloadButton();
+
     // Cognitive load isolation fade
     const tabEl = document.getElementById("livestock-tab");
     this.isolateFocusPanel(tabEl);
@@ -890,56 +1224,130 @@ class CommonGroundApp {
     document.querySelectorAll(".focus-isolated-panel").forEach(p => p.classList.remove("focus-isolated-panel"));
   }
 
-  // 4. Web Speech API Recognition listeners
-  startSpeechRecognition() {
+  // 4. Speech recognition — offline-first via Vosk-WASM (voiceLogger.js).
+  //    The deprecated webkitSpeechRecognition path streams audio to Google/
+  //    Apple servers and is therefore opt-in only:
+  //      window.cgVoiceAllowCloudFallback = true   // (NOT recommended)
+  //    If neither is available we surface a clear setup message instead of
+  //    silently degrading.
+  async startSpeechRecognition() {
+    // Toggle: if already listening, stop the active recognizer.
+    if (this.isListening) {
+      if (this._offlineVoice) {
+        this.btnVoiceListen.disabled = true;
+        try {
+          const finalText = await this._offlineVoice.stop();
+          if (finalText) {
+            this.voiceTranscribedText.textContent = `"${finalText}"`;
+            this.parseVoiceIntent(finalText);
+          } else {
+            this.voiceTranscribedText.textContent = "(no speech recognised)";
+          }
+        } catch (err) {
+          console.error("Failed stopping offline voice:", err);
+        } finally {
+          this._offlineVoice = null;
+          this.stopListeningUI();
+          this.btnVoiceListen.disabled = false;
+        }
+        return;
+      }
+      if (this.speechRecognizer) {
+        try { this.speechRecognizer.stop(); } catch (err) {}
+        return;
+      }
+    }
+
+    // Try offline Vosk-WASM first.
+    if (window.cgVoice) {
+      const ok = await window.cgVoice.isOfflineVoiceAvailable();
+      if (ok) {
+        try {
+          await this._startOfflineSpeech();
+          return;
+        } catch (err) {
+          console.warn("Offline voice failed to start:", err);
+          this.voiceTranscriptionStatus.textContent =
+              "OFFLINE VOICE FAILED — " + (err.message || "unknown error");
+          this.voiceTranscriptionStatus.style.color = "var(--accent-clay)";
+          if (!window.cgVoiceAllowCloudFallback) return;
+        }
+      } else {
+        this.voiceTranscriptionStatus.textContent = "OFFLINE VOICE NOT PROVISIONED";
+        this.voiceTranscriptionStatus.style.color = "var(--accent-amber)";
+        this.voiceTranscribedText.textContent =
+            "Voice logging needs the offline model. See voiceLogger.js header for " +
+            "setup (vendor/vosk-browser/ + models/vosk-model-small-en-us-0.15.tar.gz)." +
+            (window.cgVoiceAllowCloudFallback ? " Falling back to cloud speech…" : "");
+        if (!window.cgVoiceAllowCloudFallback) return;
+      }
+    }
+
+    // Opt-in cloud fallback (Chrome/Safari proprietary). Off by default.
+    this._startCloudSpeechRecognition();
+  }
+
+  async _startOfflineSpeech() {
+    this._offlineVoice = new window.cgVoice.OfflineVoiceLogger({
+      onStatus: ({ state, message }) => {
+        this.voiceTranscriptionStatus.textContent = message;
+        this.voiceTranscriptionStatus.style.color =
+            state === "error"     ? "var(--accent-clay)"  :
+            state === "listening" ? "var(--accent-amber)" :
+                                    "var(--accent-sky)";
+      },
+      onPartial: (partial) => {
+        this.voiceTranscribedText.textContent = `"${partial}…"`;
+      },
+      onFinal: (full) => {
+        this.voiceTranscribedText.textContent = `"${full}"`;
+      }
+    });
+    await this._offlineVoice.start();
+    this.isListening = true;
+    this.btnVoiceListen.textContent = "🛑 Stop Listening";
+    this.btnVoiceListen.style.background = "var(--accent-clay)";
+    this.voiceMicPulse.classList.add("active");
+  }
+
+  _startCloudSpeechRecognition() {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    
     if (!SpeechRecognition) {
       this.voiceTranscriptionStatus.textContent = "SPEECH API UNSUPPORTED IN THIS BROWSER";
       this.voiceTranscriptionStatus.style.color = "var(--accent-clay)";
-      this.voiceTranscribedText.textContent = "Voice logging requires webkitSpeechRecognition API (Chrome/Safari). Use the high-fidelity mock presets below!";
+      this.voiceTranscribedText.textContent =
+          "Voice logging requires either the offline Vosk model (recommended) " +
+          "or webkitSpeechRecognition (Chrome/Safari). Use the high-fidelity mock presets below.";
       return;
     }
-    
-    if (this.isListening) {
-      this.speechRecognizer.stop();
-      return;
-    }
-    
     try {
       this.speechRecognizer = new SpeechRecognition();
       this.speechRecognizer.continuous = false;
       this.speechRecognizer.lang = "en-US";
       this.speechRecognizer.interimResults = false;
-      
+
       this.speechRecognizer.onstart = () => {
         this.isListening = true;
         this.btnVoiceListen.textContent = "🛑 Stop Listening";
         this.btnVoiceListen.style.background = "var(--accent-clay)";
-        this.voiceTranscriptionStatus.textContent = "SPEAK NOW - LISTENING...";
+        this.voiceTranscriptionStatus.textContent = "SPEAK NOW (cloud) - LISTENING...";
         this.voiceTranscriptionStatus.style.color = "var(--accent-amber)";
         this.voiceMicPulse.classList.add("active");
       };
-      
       this.speechRecognizer.onerror = (e) => {
         console.error("Speech recognition error:", e);
         this.voiceTranscriptionStatus.textContent = "SPEECH ERROR: BLOCKED / NO MIC";
         this.voiceTranscriptionStatus.style.color = "var(--accent-clay)";
         this.stopListeningUI();
       };
-      
-      this.speechRecognizer.onend = () => {
-        this.stopListeningUI();
-      };
-      
+      this.speechRecognizer.onend = () => this.stopListeningUI();
       this.speechRecognizer.onresult = (e) => {
         const resultText = e.results[0][0].transcript;
         this.voiceTranscribedText.textContent = `"${resultText}"`;
         this.parseVoiceIntent(resultText);
       };
-      
       this.speechRecognizer.start();
-    } catch(err) {
+    } catch (err) {
       console.error("Failed to build SpeechRecognition context:", err);
     }
   }
@@ -1210,17 +1618,49 @@ class CommonGroundApp {
   // ==========================================================================
   renderStoreProducts() {
     this.storeProductsGrid.innerHTML = "";
+
+    // T3.2: For each product, ask the cottage-food validator whether the
+    // inferred category is prohibited in the operator's state. Surfaces a
+    // ⚠ badge + disabled add-to-cart for hard violations so the operator
+    // can't list something they aren't legally allowed to sell.
+    const cf = window.cgCottageFood;
+    const cfReady = cf && cf.ready && this.regionStateCode;
+
     this.storeProducts.forEach(prod => {
+      let perProductWarning = '';
+      let isProhibited = false;
+      if (cfReady) {
+        const cat = cf.inferProductCategory(prod);
+        if (cat) {
+          const ev = cf.evaluateStorefront({
+            stateCode: this.regionStateCode,
+            annualRevenueUSD: 0,
+            productCategoryCounts: { [cat]: 1 }
+          });
+          const hard = ev.violations.find(v => v.category === cat);
+          if (hard) {
+            isProhibited = true;
+            perProductWarning =
+              `<div class="product-prohibited-badge" title="${this._escapeText(hard.message)}">⚠ Not legal in ${this._escapeText(this.regionStateCode)}</div>`;
+          }
+        }
+      }
+
       const card = document.createElement("div");
-      card.className = "glass-card product-card";
+      card.className = "glass-card product-card" + (isProhibited ? " product-prohibited" : "");
       card.innerHTML = `
         <div class="product-emoji-badge">${prod.emoji}</div>
         <div class="product-price-tag">$${prod.price.toFixed(2)}</div>
         <h4 style="font-size: 1.05rem; font-weight: 700; margin-bottom: 4px;">${prod.name}</h4>
         <span class="product-stock">Stock: ${prod.stock} ${prod.stock === 1 ? prod.unit : (prod.unit === 'loaf' ? 'loaves' : prod.unit + 's')} available</span>
-        
+        ${perProductWarning}
+
         <div class="crop-actions" style="border-top: none; padding-top: 0; margin-top: auto;">
-          ${prod.stock > 0 ? `
+          ${isProhibited ? `
+            <button class="btn-secondary btn-sm" disabled style="width: 100%; opacity: 0.5; cursor: not-allowed; justify-content: center;" aria-label="${this._escapeText(prod.name)} cannot be sold in your state">
+              🚫 Cannot sell here
+            </button>
+          ` : prod.stock > 0 ? `
             <button class="btn-primary btn-sm" style="width: 100%; justify-content: center;" onclick="app.addToCart('${prod.id}')">
               🛒 Add To Cart
             </button>
@@ -1305,6 +1745,7 @@ class CommonGroundApp {
     });
 
     this.cartTotalVal.textContent = `$${grandTotal.toFixed(2)}`;
+    this.renderCottageFoodBanner();
   }
 
   handleCheckoutCart() {
@@ -1410,8 +1851,13 @@ class CommonGroundApp {
           </tr>
         </tbody>
       </table>
-      <div style="border-top: 1px dotted var(--border-glass); padding-top: 10px; margin-top: 16px; font-size: 0.68rem; text-align: center; color: var(--text-muted); font-style: italic; line-height: 1.4;">
-        ⚖️ ${this.cottageFoodStatement}
+      <div class="cg-invoice-disclaimer" style="border-top: 1px dotted var(--border-glass); padding-top: 10px; margin-top: 16px; font-size: 0.68rem; text-align: center; color: var(--text-muted); font-style: italic; line-height: 1.4;">
+        ${
+          (window.cgCottageFood && window.cgCottageFood.ready
+            ? window.cgCottageFood.getInvoiceDisclaimerHTML(this._cottageFoodInput())
+            : '<div>⚖️ State-required disclaimer pending (cottage-food rules not loaded yet)</div>')
+        }
+        ${this.cottageFoodStatement ? `<div style="margin-top:6px;">${this.cottageFoodStatement}</div>` : ''}
       </div>
     `;
 
@@ -1901,6 +2347,18 @@ class CommonGroundApp {
     }
 
     live.feedSupplyLbs = Math.max(0, live.feedSupplyLbs - Math.round(inputVal * 0.15));
+
+    // T1.1: emit a livestock_logs event into the sync engine outbox so peers
+    // see the yield without waiting for the next full refresh. payload mirrors
+    // the schema in supabase/migrations/...edge_hardware_and_materialisation.sql
+    this._syncRecord('livestock_logs', {
+      id:          `lyld-${Date.now()}-${live.id}`,
+      animal_ref:  live.id,
+      event_type:  'yield',
+      payload:     { unit: live.type === 'layers' ? 'egg' : 'lb', count: inputVal },
+      recorded_at: new Date().toISOString()
+    });
+
     this.saveToStorage();
     this.render();
   }
@@ -3212,11 +3670,30 @@ class CommonGroundApp {
     this.addActivity(`Generated 5 succession seeding cycles for: ${cropLabel}`, "system", "🗓️");
   }
 
+  // T1.1: Sync-engine bridge ------------------------------------------------
+  // Routes property-level mutations through commonGroundSyncEngine when the
+  // orchestrator has wired it up. Failure is non-fatal — local state still
+  // saves to localStorage via saveToStorage(); the engine call only adds
+  // CRDT outbox propagation.
+  _syncRecord(table, record) {
+    try {
+      const engine = window.appOrchestrator && window.appOrchestrator.syncEngine;
+      if (!engine || typeof engine.saveRecordLocally !== 'function') return;
+      // Fire-and-forget — the outbox + IndexedDB writes are async, but we
+      // never block the UI on them.
+      engine.saveRecordLocally(table, record).catch(err => {
+        console.warn(`[app] sync engine write to ${table}:${record.id} failed:`, err.message || err);
+      });
+    } catch (err) {
+      console.warn('[app] _syncRecord threw:', err);
+    }
+  }
+
   // 2. Rotational Pasture Grazing herd rotation
   rotateGrazingHerd() {
     // Find active grazing paddock
     const activePaddock = this.paddocks.find(p => p.status === "grazing");
-    
+
     // Find next paddock in alphabetical rotational order
     const currentIndex = activePaddock ? this.paddocks.indexOf(activePaddock) : 0;
     const nextIndex = (currentIndex + 1) % this.paddocks.length;
@@ -3231,14 +3708,29 @@ class CommonGroundApp {
     if (activePaddock) {
       activePaddock.status = "recovering";
       activePaddock.restDays = 0;
-      activePaddock.height = 2.0; 
+      activePaddock.height = 2.0;
+      // T1.1: propagate via sync engine so other devices see the rotation.
+      this._syncRecord('paddock_planner', {
+        id:                  activePaddock.id,
+        name:                activePaddock.name,
+        current_status:      'recovering',
+        last_rotation_date:  new Date().toISOString(),
+        height_inches:       activePaddock.height,
+        recovery_days_needed: 30
+      });
     }
 
     nextPaddock.status = "grazing";
     nextPaddock.restDays = 0;
-    
+    this._syncRecord('paddock_planner', {
+      id:                  nextPaddock.id,
+      name:                nextPaddock.name,
+      current_status:      'grazing',
+      last_rotation_date:  new Date().toISOString()
+    });
+
     this.addActivity(`Rotated co-op herd from ${activePaddock ? activePaddock.name : 'Staging'} to ${nextPaddock.name}`, "system", "🔄");
-    
+
     this.saveToStorage();
     this.render();
 
@@ -3484,6 +3976,11 @@ let app;
 document.addEventListener("DOMContentLoaded", () => {
   app = new CommonGroundApp();
   window.app = app;
+
+  // T5.2: load the focus-framework design tokens before any rendering of
+  // status badges. Fires asynchronously; rendered surfaces should consult
+  // window.cgFocus.ready or listen for the cg-focus-ready event.
+  app.loadFocusFramework();
 
   // REGISTER PWA SERVICE WORKER
   if ("serviceWorker" in navigator) {

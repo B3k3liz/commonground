@@ -1,8 +1,64 @@
+# CommonGround — local-first cooperative homestead OS
+
+# Node
 node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json.bak
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+*.log
+
+# Secrets — NEVER commit
+gateway/.env
+gateway/commonground-ingestor.env
+/etc/commonground-ingestor.env
 .env
 .env.local
 .env.*.local
-.DS_Store
-*.log
+
+# Operator-provisioned heavy assets (downloaded, not source)
+# NOTE: vendor/supabase-js.min.js IS committed (it's the canonical vendored
+# client); vendored vosk-browser + models are not (operator provisions).
+vendor/vosk-browser/
+models/
+
+# Service-role keys and pairing artefacts
+hardware-secrets/
+*.hmac-secret
+
+# Local Supabase CLI artefacts
+supabase/.branches/
+supabase/.temp/
+
+# Build outputs
+dist/
+build/
+
+# Playwright artefacts
+test-results/
+playwright-report/
+.playwright/
+
+# Editor
+.vscode/
+.idea/
+*.code-workspace
+
+# Agent / tooling caches (from upstream main)
 chrome-profile/
 .agents/
+
+# Legacy prototype kept locally for reference only.
+# Move out of the repo before pushing, or leave behind .gitignore.
+.legacy-prototype/
+
+# Snapshot of the live deploy (used during reconciliation). Should be empty
+# in steady state.
+.deployed-snapshot/

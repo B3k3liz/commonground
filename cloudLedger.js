@@ -23,8 +23,19 @@
   /* -- config -------------------------------------------------------------- */
   // The publishable key is designed to ship in client code; RLS is the
   // security boundary, not key secrecy.
-  var SUPABASE_URL = 'https://omtjnkjqjkfwhaxbyfvb.supabase.co';
-  var SUPABASE_KEY = 'sb_publishable_UONEEiHKSUNoSYVc0yB5MA_fEde2Mhp';
+  //
+  // Self-hosters: override via <meta> tags in index.html or window.cgConfig.
+  // The hardcoded defaults below point at the demo cooperative project.
+  function readConfig(metaName, globalName, fallback) {
+    var meta = document.querySelector('meta[name="' + metaName + '"]');
+    if (meta && meta.getAttribute('content')) return meta.getAttribute('content');
+    if (window.cgConfig && window.cgConfig[globalName]) return window.cgConfig[globalName];
+    return fallback;
+  }
+  var SUPABASE_URL = readConfig('cg-supabase-url', 'supabaseUrl',
+      'https://omtjnkjqjkfwhaxbyfvb.supabase.co');
+  var SUPABASE_KEY = readConfig('cg-supabase-key', 'supabaseKey',
+      'sb_publishable_UONEEiHKSUNoSYVc0yB5MA_fEde2Mhp');
 
   /* -- state --------------------------------------------------------------- */
   var sb = null;            // supabase client
@@ -517,7 +528,58 @@
     // Expose a small handle for debugging / future modules (Task 2 sync).
     window.cloudLedger = {
       syncNow: function () { return syncNow(); },
-      status: function () { return { session: !!session, coop: coop, synced: syncedIds.size }; }
+      status:  function () { return { session: !!session, coop: coop, synced: syncedIds.size }; },
+
+      // T1.3 / T2.3: hardware-node pairing + secret rotation.
+      // Both call SECURITY DEFINER RPCs that enforce coop-admin role server
+      // side; the returned hex string is the secret to paste into the
+      // ESP32's serial `set-secret <hex>` command.
+      provisionHardwareNode: async function (opts) {
+        if (!sb || !session) throw new Error('Sign in to pair sensors');
+        var res = await sb.rpc('provision_hardware_node', {
+          p_node_id:        opts.nodeId,
+          p_node_type:      opts.nodeType,
+          p_display_name:   opts.displayName || null,
+          p_nonce_window_s: opts.nonceWindowS || 300
+        });
+        if (res.error) throw res.error;
+        return res.data;        // 64-char hex secret
+      },
+      rotateHardwareNodeSecret: async function (nodeId) {
+        if (!sb || !session) throw new Error('Sign in to rotate secrets');
+        var res = await sb.rpc('rotate_hardware_node_secret', { p_node_id: nodeId });
+        if (res.error) throw res.error;
+        return res.data;
+      },
+      listHardwareNodes: async function () {
+        if (!sb || !session) throw new Error('Sign in to list sensors');
+        var res = await sb.from('hardware_nodes_public').select('*').order('created_at', { ascending: false });
+        if (res.error) throw res.error;
+        return res.data || [];
+      },
+
+      // T3.4: push the operator's chosen state code into cooperatives.region_state
+      // so the cottage-food and extension data is durable across devices.
+      // Returns a promise; resolves null if not signed in or no coop yet.
+      updateRegionState: async function (stateCode) {
+        if (!sb || !session || !coop) return null;
+        var code = (stateCode || '').toUpperCase();
+        if (code && !/^[A-Z]{2}$/.test(code)) {
+          throw new Error('region_state must be a 2-letter US state code');
+        }
+        var res = await sb.from('cooperatives')
+          .update({ region_state: code || null, updated_at: new Date().toISOString() })
+          .eq('id', coop.id)
+          .select('id, region_state')
+          .single();
+        if (res.error) {
+          log('region_state update failed:', res.error.message);
+          throw res.error;
+        }
+        coop.region_state = res.data.region_state;
+        log('region_state synced to cooperatives:', coop.region_state);
+        return coop.region_state;
+      }
     };
     log('cloud ledger initialised');
   }

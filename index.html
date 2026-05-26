@@ -6,6 +6,47 @@
   <title>CommonGround — Eco-Village & Homestead OS</title>
   <meta name="description" content="Premium, offline-first operating system and permaculture AI planner for eco-villages, market homesteads, and co-op farms.">
   <meta name="theme-color" content="#071208">
+
+  <!--
+    Configuration meta tags (T2.1). Self-hosters override the demo defaults
+    by setting these to their own Supabase URL + publishable key:
+
+       <meta name="cg-supabase-url" content="https://your-pg.example.coop">
+       <meta name="cg-supabase-key" content="sb_publishable_...">
+
+    Leave commented to use the demo cooperative project.
+  -->
+
+  <!--
+    Strict Content-Security-Policy (T2.2). Opt-in: ENABLE only after you have
+    eliminated the remaining inline onclick handlers in app.js (the cart's
+    quantity buttons currently use `onclick=` attributes). Until then this
+    block stays commented because the strict policy would break the cart.
+
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self';
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data:;
+      connect-src 'self' https://*.supabase.co https://planthardiness.ars.usda.gov;
+      worker-src 'self' blob:;
+      child-src 'self' blob:;
+      font-src 'self';
+      object-src 'none';
+      base-uri 'self';
+      frame-ancestors 'none';
+      form-action 'self';
+    ">
+
+    Subresource Integrity (SRI) for vendor/supabase-js.min.js: compute via
+
+       openssl dgst -sha384 -binary vendor/supabase-js.min.js | openssl base64 -A
+
+    and paste into the script tag's `integrity` attribute as
+       integrity="sha384-<HASH>" crossorigin="anonymous"
+    The script tag below shows where it goes.
+  -->
+
   <link rel="stylesheet" href="styles.css">
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232da44e'><path d='M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4Z'/></svg>">
@@ -175,8 +216,42 @@
           </div>
 
           <div>
-            <label for="settings-cottage-food" style="font-size: 0.65rem; color: var(--text-secondary); display: block; margin-bottom: 2px;">Cottage Food Disclaimer</label>
-            <input type="text" id="settings-cottage-food" class="form-control" style="font-size: 0.75rem; padding: 4px; background: rgba(0,0,0,0.25); color: var(--text-primary);" value="Produced in a home kitchen not subject to public health inspection.">
+            <label for="settings-region-state" style="font-size: 0.65rem; color: var(--text-secondary); display: block; margin-bottom: 2px;">State (cottage-food rules, USDA zone, Extension office)</label>
+            <input type="text" id="settings-region-state" maxlength="2" placeholder="CA" class="form-control" style="font-size: 0.75rem; padding: 4px; background: rgba(0,0,0,0.25); color: var(--text-primary); text-transform: uppercase;">
+          </div>
+
+          <details id="settings-state-resources-wrapper" style="margin-top: 6px;">
+            <summary style="font-size: 0.7rem; color: var(--text-secondary); cursor: pointer;">📚 Local resources (USDA zone · Extension · zoning)</summary>
+            <div id="settings-state-resources" style="margin-top: 6px;"></div>
+          </details>
+
+          <!-- T1.3 / T2.3: Hardware-sensor pairing. Coop-admin only; the RPC
+               enforces the role server-side and refuses callers who lack it. -->
+          <details id="settings-pair-sensor-wrapper" style="margin-top: 6px;">
+            <summary style="font-size: 0.7rem; color: var(--text-secondary); cursor: pointer;">🔧 Pair / rotate ESP32 sensors</summary>
+            <div id="settings-pair-sensor" style="margin-top: 6px; font-size: 0.72rem;">
+              <form id="form-pair-sensor" style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;">
+                <input type="text" id="pair-node-id" placeholder="Node-G02" required pattern="^Node-[A-Za-z0-9-]{1,32}$" maxlength="38" class="form-control" style="font-size: 0.7rem; padding: 4px;" aria-label="Node ID">
+                <select id="pair-node-type" class="form-control" style="font-size: 0.7rem; padding: 4px;" aria-label="Node type">
+                  <option value="gate">gate</option>
+                  <option value="soil">soil</option>
+                  <option value="water">water</option>
+                  <option value="hive">hive</option>
+                  <option value="temp">temp</option>
+                  <option value="weather">weather</option>
+                  <option value="generic">generic</option>
+                </select>
+                <input type="text" id="pair-display-name" placeholder="South orchard gate (optional)" class="form-control" style="font-size: 0.7rem; padding: 4px; grid-column: 1 / -1;" aria-label="Display name">
+                <button type="submit" class="btn-primary btn-sm" style="grid-column: 1 / -1; justify-content: center;">Pair new sensor</button>
+              </form>
+              <div id="pair-sensor-result" style="margin-bottom: 8px;"></div>
+              <div id="pair-sensor-list" style="font-size: 0.7rem;"></div>
+            </div>
+          </details>
+
+          <div>
+            <label for="settings-cottage-food" style="font-size: 0.65rem; color: var(--text-secondary); display: block; margin-bottom: 2px;">Extra disclaimer (appended to state-required text)</label>
+            <input type="text" id="settings-cottage-food" class="form-control" style="font-size: 0.75rem; padding: 4px; background: rgba(0,0,0,0.25); color: var(--text-primary);" value="">
           </div>
         </div>
       </details>
@@ -204,11 +279,8 @@
           <h1 id="view-title" style="font-size: 2rem; font-weight: 700; color: var(--text-primary);">Dashboard</h1>
           <p id="view-subtitle">Welcome back, Bekah. Here is today's overview.</p>
         </div>
-        <div style="text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+        <div style="text-align: right;">
           <span class="badge badge-clay" id="live-date">May 24, 2026</span>
-          <span class="badge badge-sage" style="background: rgba(46, 196, 182, 0.12); color: #37beb0; border-color: rgba(46, 196, 182, 0.25); font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
-            <span style="font-size: 8px; line-height: 1; color: #37beb0; animation: pulse 1.5s infinite ease-in-out;">●</span> Netlify Connected
-          </span>
         </div>
       </header>
 
@@ -546,6 +618,9 @@
                   <span id="cart-total-val" aria-live="polite">$0.00</span>
                 </div>
               </div>
+
+              <!-- Cottage-food compliance banner — populated by cottageFoodValidator.js when violations or warnings exist. Stays empty (display:none) when storefront is clean. -->
+              <div id="cottage-food-banner" aria-live="polite" style="margin-bottom: 12px;"></div>
 
               <button class="btn-primary" id="btn-checkout-cart" style="width: 100%; justify-content: center;" aria-label="Complete storefront sale">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17,18C15.89,18 15,18.89 15,20A2,2 0 0,0 17,22A2,2 0 0,0 19,20C19,18.89 18.1,18 17,18M7,18C5.89,18 5,18.89 5,20A2,2 0 0,0 7,22A2,2 0 0,0 9,20C9,18.89 8.1,18 7,18M7.2,14.63L7.17,14.75A0.25,0.25 0 0,0 7.42,15H19V17H7C5.89,17 5,16.1 5,15C5,14.42 5.25,13.91 5.66,13.55L7.06,11L3,2H1V0H5L5.9,2H19C19.78,2 20.37,2.77 20.17,3.5L17.2,8.88C16.82,9.57 16.08,10 15.28,10H8.1L7.2,14.63Z"/></svg>
@@ -1458,18 +1533,45 @@
           </div>
         </div>
       </div>
-      <div class="modal-footer" style="justify-content: center;">
+      <div class="modal-footer" style="justify-content: center; flex-direction: column; gap: 8px;">
         <button type="button" class="btn-primary" id="btn-voice-listen" style="background: var(--accent-sky); border-color: var(--accent-sky); width: 100%; justify-content: center;">
-          🎙️ Start Web Speech Recognition
+          🎙️ Start Voice Recognition
         </button>
+        <!-- T1.2: download offline voice assets on demand (~40 MB). Button is
+             shown when the offline model is NOT yet provisioned; otherwise
+             collapses to a small "Update offline voice" link. Wired by
+             app.js setupVoiceDownloadButton(). -->
+        <button type="button" class="btn-secondary" id="btn-voice-download-offline" style="width: 100%; justify-content: center; display: none; font-size: 0.85rem;">
+          ⬇️ Download offline voice model (~40 MB)
+        </button>
+        <div id="voice-download-status" aria-live="polite" style="font-size: 0.72rem; color: var(--text-muted); min-height: 1em; text-align: center;"></div>
       </div>
     </div>
   </div>
 
   <script type="module" src="systemOrchestrator.js"></script>
+
+  <!-- Cottage-food compliance engine. ES module so it can export for tests;
+       publishes window.cgCottageFood once the rules JSON is fetched. -->
+  <script type="module" src="./cottageFoodValidator.js"></script>
+
+  <!-- USDA Plant Hardiness Zone + Cooperative Extension lookups per state.
+       Publishes window.cgStateResources. -->
+  <script type="module" src="./stateResources.js"></script>
+
+  <!-- Offline voice logger (Vosk-WASM). Loads BEFORE app.js so the mic
+       button finds window.cgVoice on first click. Falls back gracefully
+       if vendor/vosk-browser or the model isn't provisioned. -->
+  <script src="./voiceLogger.js"></script>
+
   <script src="app.js"></script>
 
-  <!-- Cloud Ledger: optional Supabase sync layer (vendored client = offline-safe) -->
+  <!-- Cloud Ledger: optional Supabase sync layer (vendored client = offline-safe).
+       To enable Subresource Integrity, replace the script tag below with:
+         <script src="./vendor/supabase-js.min.js"
+                 integrity="sha384-REPLACE_WITH_HASH"
+                 crossorigin="anonymous"></script>
+       See the head section for the openssl one-liner that computes the hash. -->
   <script src="./vendor/supabase-js.min.js"></script>
   <script src="./cloudLedger.js"></script>
 </body>
