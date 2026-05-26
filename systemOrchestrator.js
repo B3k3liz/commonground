@@ -125,14 +125,18 @@ class SystemOrchestrator {
       const response = await this.telemetryAgent.handleGateStateWebhook(mockReq);
       console.log('Edge Webhook Ingestion Response:', response);
 
-      // Diagnostic 3: Ecological AUD calculations under frosty conditions (40F)
+      // Diagnostic 3: Ecological AUD calculations under typical spring grazing conditions.
+      // We deliberately pick T=65°F (mid-curve, ascending limb of the triangular
+      // growth coefficient) so the diagnostic surface a healthy non-zero capacity.
+      // Frost (T < tBase = 40°F) and heat-shutdown (T > tMax = 95°F) clamp to zero
+      // by design (ECO-1) — those edge cases are exercised by the suite, not here.
       console.log('Testing Climate Downscale Equation...');
       const capMetrics = this.climateCalibrator.calculateDynamicAUD(
         1500, // 1500 lbs/acre
         2.5,  // 2.5 acres
         60,   // 60% humidity
-        10,   // 10mm rainfall (deficit)
-        38    // 38°F (frost risk temp)
+        20,   // 20mm rainfall (well-watered)
+        65    // 65°F (mid-growth-curve)
       );
       
       console.log('Climate Downscale Capacity Result:', capMetrics);

@@ -5,7 +5,7 @@
   "description": "CommonGround Eco-Village & Homestead OS — local-first cooperative operations.",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/test-p2p-concurrency.js tests/test-telemetry-ingestor.js tests/test-cottage-food-validator.js tests/test-state-resources.js",
+    "test": "node --test tests/test-p2p-concurrency.js tests/test-telemetry-ingestor.js tests/test-cottage-food-validator.js tests/test-state-resources.js suite1.persistence-sync.test.mjs suite2.concurrency-drift.test.mjs",
     "test:p2p":       "node --test tests/test-p2p-concurrency.js",
     "test:ingestor":  "node --test tests/test-telemetry-ingestor.js",
     "test:cottage":   "node --test tests/test-cottage-food-validator.js",
