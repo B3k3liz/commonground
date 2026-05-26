@@ -72,36 +72,50 @@ export class TelemetryAgent {
       return freshResponse;
     }
 
-    // 2. F-04: Cryptographic HMAC-SHA256 Signature Verification
+    // 2. F-04: Cryptographic HMAC-SHA256 Signature Verification (TEL-1: Strict Signature Enforcement)
     const signature = headers['x-commonground-signature'] || body.signature;
-    if (crypto && signature) {
-      // Create clone of request body without the signature parameter for hashing
-      const verifyBody = { ...body };
-      delete verifyBody.signature;
-      
-      const expectedSignature = crypto
-        .createHmac('sha256', this.preSharedKey)
-        .update(canonicalJsonStringify(verifyBody))
-        .digest('hex');
-
-      let signaturesMatch = false;
-      try {
-        const bufA = Buffer.from(signature, 'hex');
-        const bufB = Buffer.from(expectedSignature, 'hex');
-        if (bufA.length === bufB.length) {
-          signaturesMatch = crypto.timingSafeEqual(bufA, bufB);
-        }
-      } catch (e) {
-        signaturesMatch = false;
+    if (!signature) {
+      const unauthorizedResponse = { error: 'Unauthorized: Missing signature verification failed.' };
+      if (res && typeof res.status === 'function') {
+        return res.status(401).json(unauthorizedResponse);
       }
+      return unauthorizedResponse;
+    }
 
-      if (!signaturesMatch) {
-        const unauthorizedResponse = { error: 'Unauthorized: Invalid signature verification failed.' };
-        if (res && typeof res.status === 'function') {
-          return res.status(401).json(unauthorizedResponse);
-        }
-        return unauthorizedResponse;
+    if (!crypto) {
+      const serviceUnavailableResponse = { error: 'Service Unavailable: Crypto module not available.' };
+      if (res && typeof res.status === 'function') {
+        return res.status(503).json(serviceUnavailableResponse);
       }
+      return serviceUnavailableResponse;
+    }
+
+    // Create clone of request body without the signature parameter for hashing
+    const verifyBody = { ...body };
+    delete verifyBody.signature;
+    
+    const expectedSignature = crypto
+      .createHmac('sha256', this.preSharedKey)
+      .update(canonicalJsonStringify(verifyBody))
+      .digest('hex');
+
+    let signaturesMatch = false;
+    try {
+      const bufA = Buffer.from(signature, 'hex');
+      const bufB = Buffer.from(expectedSignature, 'hex');
+      if (bufA.length === bufB.length) {
+        signaturesMatch = crypto.timingSafeEqual(bufA, bufB);
+      }
+    } catch (e) {
+      signaturesMatch = false;
+    }
+
+    if (!signaturesMatch) {
+      const unauthorizedResponse = { error: 'Unauthorized: Invalid signature verification failed.' };
+      if (res && typeof res.status === 'function') {
+        return res.status(401).json(unauthorizedResponse);
+      }
+      return unauthorizedResponse;
     }
 
     // 3. F-05: Idempotency filter (Packet retransmission rejection)
