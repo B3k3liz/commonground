@@ -33,7 +33,7 @@ export class EnvironmentalCalibrator {
     animalCount = 10,
     avgAnimalWeight = 1000
   ) {
-    // 1. Continuous Growing Degree Days (GDD) Pasture Growth curve (G_t)
+    // 1. Continuous Thermal-Growth Coefficient Pasture Growth curve (G_t) (ECO-3: Renamed to reflect instantaneous thermal-growth coefficient accurately)
     // Metabolic base zero for standard forage pasture grass is 40F. Optimal vegetation speed limit is 70F.
     // ECO-1: Cool-season growth shuts down under high-heat stress (TMax = 95F), forming a triangular thermal curve.
     const tBase = 40.0;
