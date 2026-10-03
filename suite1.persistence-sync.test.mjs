@@ -19,7 +19,10 @@
  *     is fixed. When a [BUG] test goes green, the bug is fixed: drop the tag,
  *     keep the test. Do NOT weaken these assertions to force a pass.
  *
- * EXPECTED ON CURRENT CODE:  4 passing, 7 failing — all 7 failures intentional.
+ * STATUS (2026):  All tests pass — every [BUG] finding below has since been
+ *   fixed in the engine. The [BUG <id>] tags are kept for traceability to the
+ *   original audit; they no longer mark expected failures. If one of these goes
+ *   red again, it is a genuine regression of a previously-fixed defect.
  */
 
 import { describe, it, before, after, beforeEach } from 'node:test';

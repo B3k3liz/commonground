@@ -273,19 +273,19 @@
           <div style="display: flex; flex-direction: column; gap: 20px;">
             
             <!-- Weather Widget -->
-            <div class="glass-card" style="background: linear-gradient(135deg, hsla(140, 10%, 15%, 0.8), hsla(18, 50%, 10%, 0.25));" tabindex="0">
+            <div class="glass-card" id="weather-widget" style="background: linear-gradient(135deg, hsla(140, 10%, 15%, 0.8), hsla(18, 50%, 10%, 0.25));" tabindex="0">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-                <h4 style="font-family: 'Outfit', sans-serif; font-size: 1.05rem; color: var(--text-secondary);">Homestead Weather</h4>
-                <span class="badge badge-sage">Good Growth</span>
+                <h4 style="font-family: 'Outfit', sans-serif; font-size: 1.05rem; color: var(--text-secondary);">Homestead Weather <span id="weather-location" style="font-size:0.7rem; color: var(--text-muted); font-weight:400;"></span></h4>
+                <span class="badge badge-sage" id="weather-badge">Loading…</span>
               </div>
               <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-                <div style="font-size: 2.5rem; font-weight: 800; font-family: 'Outfit'; color: var(--text-primary);">68°F</div>
+                <div style="font-size: 2.5rem; font-weight: 800; font-family: 'Outfit'; color: var(--text-primary);" id="weather-temp">—°F</div>
                 <div style="color: var(--text-secondary);">
-                  <div style="font-weight: 600; font-size:0.9rem;">Partly Cloudy</div>
-                  <div style="font-size: 0.75rem; color: var(--text-muted);">Humidity: 52% | Wind: 6mph</div>
+                  <div style="font-weight: 600; font-size:0.9rem;" id="weather-condition">Fetching live conditions…</div>
+                  <div style="font-size: 0.75rem; color: var(--text-muted);" id="weather-detail">Humidity: — | Wind: —</div>
                 </div>
               </div>
-              <p style="font-size: 0.8rem; color: var(--text-muted);">Perfect afternoon soil moisture. Recommended watering window: 6:00 PM tonight.</p>
+              <p style="font-size: 0.8rem; color: var(--text-muted);" id="weather-advice">Connecting to live public weather…</p>
             </div>
 
             <!-- Urgent Alerts -->
@@ -1468,6 +1468,50 @@
 
   <script type="module" src="systemOrchestrator.js"></script>
   <script src="app.js"></script>
+
+  <!-- Live public weather (Open-Meteo: free, no API key). Updates the widget and
+       feeds real temp/humidity/rainfall into the agronomy engine. -->
+  <script type="module">
+    import { fetchLiveWeather, resolveLocation } from './weatherService.js';
+
+    const $ = (id) => document.getElementById(id);
+    const toneClass = { sage: 'badge-sage', amber: 'badge-amber', clay: 'badge-clay' };
+
+    function renderWeather(w, locationLabel) {
+      if ($('weather-location')) $('weather-location').textContent = locationLabel ? `· ${locationLabel}` : '';
+      if ($('weather-temp')) $('weather-temp').textContent = w.tempF != null ? `${Math.round(w.tempF)}°F` : '—°F';
+      if ($('weather-condition')) $('weather-condition').textContent = `${w.conditionEmoji} ${w.conditionLabel}`;
+      if ($('weather-detail')) {
+        $('weather-detail').textContent =
+          `Humidity: ${w.humidity != null ? w.humidity + '%' : '—'} | Wind: ${w.windMph != null ? Math.round(w.windMph) + 'mph' : '—'}`;
+      }
+      if ($('weather-advice')) $('weather-advice').textContent = w.wateringAdvice;
+      const badge = $('weather-badge');
+      if (badge) {
+        badge.textContent = w.badge.text;
+        badge.className = 'badge ' + (toneClass[w.badge.tone] || 'badge-sage');
+      }
+      // Share live conditions so the agronomy calculator can run on real data.
+      window.cgLiveWeather = w;
+      window.dispatchEvent(new CustomEvent('cg-weather-updated', { detail: w }));
+    }
+
+    async function updateWeather() {
+      try {
+        const loc = await resolveLocation();
+        const weather = await fetchLiveWeather(loc);
+        renderWeather(weather, loc.label);
+      } catch (err) {
+        console.warn('[Weather] live fetch failed, leaving placeholder:', err.message);
+        const badge = $('weather-badge');
+        if (badge) { badge.textContent = 'Offline'; badge.className = 'badge badge-amber'; }
+        if ($('weather-advice')) $('weather-advice').textContent = 'Live weather unavailable right now — will retry shortly.';
+      }
+    }
+
+    updateWeather();
+    setInterval(updateWeather, 15 * 60 * 1000); // refresh every 15 min
+  </script>
 
   <!-- Cloud Ledger: optional Supabase sync layer (vendored client = offline-safe) -->
   <script src="./vendor/supabase-js.min.js"></script>

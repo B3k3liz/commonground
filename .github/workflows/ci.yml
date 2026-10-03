@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    name: Unit tests (node --test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # Zero dependencies — the project deliberately has no node_modules.
+      # The built-in node:test runner and node:assert are all the suites use.
+      - name: Run test suites
+        run: npm test
+
+      - name: Coverage report (informational)
+        run: npm run test:coverage || true
